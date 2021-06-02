@@ -5,3 +5,5 @@ opencv-python==4.5.2.52
 matplotlib==3.4.2
 filterpy==1.4.5
 lap==0.4.0
+black==21.5b2
+pylint==2.8.3
