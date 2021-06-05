@@ -18,8 +18,7 @@ def load_yolo():
         classes = [line.strip() for line in f.readlines()]
     layers_names = net.getLayerNames()
     output_layers = [layers_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-    colors = np.random.uniform(0, 255, size=(len(classes), 3))
-    return net, classes, colors, output_layers
+    return net, classes, output_layers
 
 
 def detect_objects(img, net, outputLayers):
@@ -38,6 +37,7 @@ def detect_objects(img, net, outputLayers):
     )
     net.setInput(blob)
     outputs = net.forward(outputLayers)
+    height, width, channels = img.shape
     return blob, outputs
 
 
@@ -46,37 +46,45 @@ def get_box_dimensions(outputs, height, width):
     Process the image output to opencv version
     """
     boxes = []
+    nms_boxes = []
     confs = []
-    class_ids = []
     for output in outputs:
         for detect in output:
             scores = detect[5:]
             class_id = np.argmax(scores)
             conf = scores[class_id]
-            if conf > 0.3:
+            if conf > 0.4:
                 center_x = int(detect[0] * width)
                 center_y = int(detect[1] * height)
                 w = int(detect[2] * width)
                 h = int(detect[3] * height)
                 x = int(center_x - w / 2)
                 y = int(center_y - h / 2)
-                boxes.append([x, y, w, h])
+                boxes.append([x, y, w, h, class_id])
                 confs.append(float(conf))
-                class_ids.append(class_id)
-    return boxes, confs, class_ids
+    indexes = cv2.dnn.NMSBoxes(boxes, confs, 0.4, 0.3)
+    for i in range(len(boxes)):
+        if i in indexes:
+            x, y, w, h, class_id = boxes[i]
+            nms_boxes.append([x, y, x + w, y + h, confs[i], class_id])
+    return np.array(nms_boxes) if len(nms_boxes) else np.empty((0, 6))
 
 
-def draw_labels(boxes, confs, colors, class_ids, classes, img):
+def draw_labels(boxes, img, classes):
     """
     render labels for the corresponding boxes
     """
-    indexes = cv2.dnn.NMSBoxes(boxes, confs, 0.5, 0.4)
-    font = cv2.FONT_HERSHEY_PLAIN
-    for i in range(len(boxes)):
-        if i in indexes:
-            x, y, w, h = boxes[i]
-            label = str(classes[class_ids[i]])
-            color = colors[i]
-            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(img, label, (x, y - 5), font, 1, color, 1)
+    for box in boxes:
+        (x1, y1, x2, y2, track_id, class_id) = map(int, box)
+        color = (0, 255, 0)
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(
+            img,
+            f"{track_id} - :{classes[class_id]}",
+            (x1, y1 - 5),
+            cv2.FONT_HERSHEY_COMPLEX_SMALL,
+            1,
+            color,
+            1,
+        )
     cv2.imshow("Image", img)

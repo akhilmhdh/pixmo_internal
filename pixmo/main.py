@@ -90,18 +90,19 @@ def img2tensor(img):
 
 
 def start_pixmo():
-    object_tracker = Sort()
+    object_tracker = Sort(max_age=10, min_hits=3, iou_threshold=0.3)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
     while True:
         ret, frame = cap.read()
-        model, classes, colors, output_layers = load_yolo()
+        model, classes, output_layers = load_yolo()
         height, width, channels = frame.shape
         blob, outputs = detect_objects(frame, model, output_layers)
-        boxes, confs, class_ids = get_box_dimensions(outputs, height, width)
-        draw_labels(boxes, confs, colors, class_ids, classes, frame)
+        boxes = get_box_dimensions(outputs, height, width)
+        track_bbs_ids = object_tracker.update(boxes)
+        draw_labels(track_bbs_ids, frame, classes)
         key = cv2.waitKey(1)
         if key == 27:
             break
