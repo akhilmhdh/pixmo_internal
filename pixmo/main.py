@@ -6,6 +6,7 @@ from os import path
 import argparse
 from multiprocessing import Process, Queue
 import face_recognition
+import onnxruntime
 
 from pixmo.config import Config
 
@@ -17,10 +18,15 @@ from pixmo.detectors.yolo import (
     load_yolo,
 )
 
+ort_session = onnxruntime.InferenceSession(
+    path.join(Config.BASE_DIR, "models/emotion.onnx")
+)
+
 # https://arcade.academy/examples/happy_face.html
 
 yolo_classes = []
 pad_scale = 0.33
+
 
 classes = {
     0: "Angry",
@@ -43,64 +49,13 @@ def img2tensor(img):
     return img
 
 
-# def start_pixmo():
-#     object_tracker = Sort()
-#     face_cascade = cv2.CascadeClassifier(
-#         path.join(BASE_DIR, "models/haarcascade_frontalface_default.xml")
-#     )
-#     cap = cv2.VideoCapture(0)
-#     if not cap.isOpened():
-#         print("Cannot open camera")
-#         exit()
-#     while True:
-#         ret, frame = cap.read()
-#         if not ret:
-#             print("Can't receive frame (stream end?). Exiting ...")
-#             break
-
-#         image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#         faces = face_cascade.detectMultiScale(image, 1.3, 5)
-#         faces = (
-#             np.array([[*face, 1] for face in faces]) if len(faces) else np.empty((0, 5))
-#         )
-#         track_bbs_ids = object_tracker.update(faces)
-#         for i, (x, y, w, h, object_id) in enumerate(faces):
-#             wpad = int(w * pad_scale)
-#             hpad = int(h * pad_scale)
-#             face_img = image[y - hpad : y + h + hpad, x - wpad : x + w + wpad]
-#             [face_width, face_height] = face_img.shape
-#             if face_width == 0 or face_height == 0:
-#                 continue
-#             face_img = cv2.resize(face_img, (48, 48))
-#             face_img_tensor = img2tensor(face_img)[None][None]
-#             ort_inputs = {ort_session.get_inputs()[0].name: face_img_tensor}
-#             ort_outs = ort_session.run(None, ort_inputs)
-#             output = ort_outs[0]
-#             pred = np.argmax(output[0])
-#             cv2.rectangle(frame, (x, y), (x + w, x + h), (0, 255, 0), 2)
-#             cv2.putText(
-#                 frame,
-#                 f"{classes[pred]} - person:{object_id}",
-#                 (x, y - 10),
-#                 cv2.FONT_HERSHEY_SIMPLEX,
-#                 0.9,
-#                 (36, 255, 12),
-#                 2,
-#             )
-#         cv2.imshow("frame", frame)
-#         if cv2.waitKey(1) == ord("q"):
-#             break
-# cap.release()
-
-alpha = 123
-
-
 def event_loop(queue: Queue):
     while True:
         msg = queue.get()
         if msg["type"] == "end":
             break
         frame = msg["payload"]
+        height, width, channels = frame.shape
         input_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
         input_frame = cv2.cvtColor(input_frame, cv2.COLOR_BGR2RGB)
 
@@ -112,6 +67,16 @@ def event_loop(queue: Queue):
             bottom *= 4
             left *= 4
 
+            face_img = frame[top:bottom, left:right]
+            face_img = cv2.resize(face_img, (48, 48))
+            face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+
+            face_img_tensor = img2tensor(face_img)[None][None]
+            ort_inputs = {ort_session.get_inputs()[0].name: face_img_tensor}
+            ort_outs = ort_session.run(None, ort_inputs)
+            output = ort_outs[0]
+            pred = np.argmax(output[0])
+
             # Draw a box around the face
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
 
@@ -121,7 +86,13 @@ def event_loop(queue: Queue):
             )
             font = cv2.FONT_HERSHEY_DUPLEX
             cv2.putText(
-                frame, "akhil", (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1
+                frame,
+                f"akhil:{classes[pred]}",
+                (left + 6, bottom - 6),
+                font,
+                1.0,
+                (255, 255, 255),
+                1,
             )
         cv2.imshow("frame", frame)
         key = cv2.waitKey(1)
