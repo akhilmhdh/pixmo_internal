@@ -5,6 +5,9 @@ import os
 from os import path
 import argparse
 from multiprocessing import Process, Queue
+import face_recognition
+
+from pixmo.config import Config
 
 from pixmo.sort import Sort
 from pixmo.detectors.yolo import (
@@ -14,9 +17,9 @@ from pixmo.detectors.yolo import (
     load_yolo,
 )
 
-BASE_DIR = os.path.dirname(__file__)
+# https://arcade.academy/examples/happy_face.html
 
-
+yolo_classes = []
 pad_scale = 0.33
 
 classes = {
@@ -89,13 +92,41 @@ def img2tensor(img):
 #             break
 # cap.release()
 
+alpha = 123
+
 
 def event_loop(queue: Queue):
     while True:
         msg = queue.get()
-        if msg["state"] == "end":
+        if msg["type"] == "end":
             break
-        print(f"{msg['state']}-{msg['payload']}")
+        frame = msg["payload"]
+        input_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+        input_frame = cv2.cvtColor(input_frame, cv2.COLOR_BGR2RGB)
+
+        face_locations = face_recognition.face_locations(input_frame)
+        for (top, right, bottom, left) in face_locations:
+            # Scale back up face locations since the frame we detected in was scaled to 1/4 size
+            top *= 4
+            right *= 4
+            bottom *= 4
+            left *= 4
+
+            # Draw a box around the face
+            cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
+
+            # Draw a label with a name below the face
+            cv2.rectangle(
+                frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED
+            )
+            font = cv2.FONT_HERSHEY_DUPLEX
+            cv2.putText(
+                frame, "akhil", (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1
+            )
+        cv2.imshow("frame", frame)
+        key = cv2.waitKey(1)
+        if key == 27:
+            break
 
 
 def start_pixmo():
@@ -106,21 +137,25 @@ def start_pixmo():
 
     object_tracker = Sort(max_age=10, min_hits=3, iou_threshold=0.3)
     cap = cv2.VideoCapture(0)
+
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
     while True:
         ret, frame = cap.read()
-        model, classes, output_layers = load_yolo()
+        model, output_layers = load_yolo()
         height, width, channels = frame.shape
         blob, outputs = detect_objects(frame, model, output_layers)
-        boxes = get_box_dimensions(outputs, height, width)
+        boxes, hasPerson = get_box_dimensions(outputs, height, width)
+        if hasPerson:
+            event_queue.put({"type": "person", "payload": frame})
         track_bbs_ids = object_tracker.update(boxes)
-        draw_labels(track_bbs_ids, frame, classes)
+        draw_labels(track_bbs_ids, frame, yolo_classes)
         key = cv2.waitKey(1)
         if key == 27:
             break
-    event_queue.put({"state": "end"})
+    # Clean up
+    event_queue.put({"type": "end"})
     event_process.join()
     cap.release()
 
@@ -134,4 +169,6 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    with open(path.join(Config.BASE_DIR, "models/coco.txt"), "r") as f:
+        yolo_classes = [line.strip() for line in f.readlines()]
     start_pixmo()

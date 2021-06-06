@@ -13,12 +13,9 @@ def load_yolo():
         path.join(Config.BASE_DIR, "models/yolov3.weights"),
         path.join(Config.BASE_DIR, "models/yolov3.cfg"),
     )
-    classes = []
-    with open(path.join(Config.BASE_DIR, "models/coco.txt"), "r") as f:
-        classes = [line.strip() for line in f.readlines()]
     layers_names = net.getLayerNames()
     output_layers = [layers_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
-    return net, classes, output_layers
+    return net, output_layers
 
 
 def detect_objects(img, net, outputLayers):
@@ -48,6 +45,7 @@ def get_box_dimensions(outputs, height, width):
     boxes = []
     nms_boxes = []
     confs = []
+    hasPerson = False
     for output in outputs:
         for detect in output:
             scores = detect[5:]
@@ -66,8 +64,10 @@ def get_box_dimensions(outputs, height, width):
     for i in range(len(boxes)):
         if i in indexes:
             x, y, w, h, class_id = boxes[i]
+            if class_id == 0:
+                hasPerson = True
             nms_boxes.append([x, y, x + w, y + h, confs[i], class_id])
-    return np.array(nms_boxes) if len(nms_boxes) else np.empty((0, 6))
+    return np.array(nms_boxes) if len(nms_boxes) else np.empty((0, 6)), hasPerson
 
 
 def draw_labels(boxes, img, classes):
