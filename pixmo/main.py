@@ -17,87 +17,21 @@ from pixmo.detectors.yolo import (
     get_box_dimensions,
     load_yolo,
 )
-
-ort_session = onnxruntime.InferenceSession(
-    path.join(Config.BASE_DIR, "models/emotion.onnx")
-)
+from pixmo.emotion_engine import EmotionEngine
 
 # https://arcade.academy/examples/happy_face.html
 
 yolo_classes = []
-pad_scale = 0.33
-
-
-classes = {
-    0: "Angry",
-    1: "Disgust",
-    2: "Fear",
-    3: "Happy",
-    4: "Sad",
-    5: "Surprise",
-    6: "Neutral",
-}
-
-
-def img2tensor(img):
-    img = img / 255
-    # Normalize the image to mean and std
-    mean = [0.5]
-    std = [0.5]
-    img = (img - mean) / std
-    img = np.array(img, dtype=np.float32)
-    return img
 
 
 def event_loop(queue: Queue):
+    emotion_engine = EmotionEngine()
     while True:
         msg = queue.get()
         if msg["type"] == "end":
             break
         frame = msg["payload"]
-        height, width, channels = frame.shape
-        input_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-        input_frame = cv2.cvtColor(input_frame, cv2.COLOR_BGR2RGB)
-
-        face_locations = face_recognition.face_locations(input_frame)
-        for (top, right, bottom, left) in face_locations:
-            # Scale back up face locations since the frame we detected in was scaled to 1/4 size
-            top *= 4
-            right *= 4
-            bottom *= 4
-            left *= 4
-
-            face_img = frame[top:bottom, left:right]
-            face_img = cv2.resize(face_img, (48, 48))
-            face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
-
-            face_img_tensor = img2tensor(face_img)[None][None]
-            ort_inputs = {ort_session.get_inputs()[0].name: face_img_tensor}
-            ort_outs = ort_session.run(None, ort_inputs)
-            output = ort_outs[0]
-            pred = np.argmax(output[0])
-
-            # Draw a box around the face
-            cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-
-            # Draw a label with a name below the face
-            cv2.rectangle(
-                frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED
-            )
-            font = cv2.FONT_HERSHEY_DUPLEX
-            cv2.putText(
-                frame,
-                f"akhil:{classes[pred]}",
-                (left + 6, bottom - 6),
-                font,
-                1.0,
-                (255, 255, 255),
-                1,
-            )
-        cv2.imshow("frame", frame)
-        key = cv2.waitKey(1)
-        if key == 27:
-            break
+        emotion = emotion_engine.update(frame)
 
 
 def start_pixmo():
