@@ -25,13 +25,13 @@ class EmotionEngine:
         self.frame_rate = frame_rate
         self.scoring_rate = scoring_rate
         self.emotions = {
-            0: "Angry",
-            1: "Disgust",
-            2: "Fear",
-            3: "Happy",
-            4: "Sad",
-            5: "Surprise",
-            6: "Neutral",
+            0: "angry",
+            1: "disgust",
+            2: "fear",
+            3: "happy",
+            4: "sad",
+            5: "surprise",
+            6: "neutral",
         }
         self.emotion_collector = []
         self.state = self.emotions[6]
@@ -90,6 +90,8 @@ class EmotionEngine:
         diff = present_time - self.start_interval
         if diff.total_seconds() > self.scoring_rate:
             self.start_interval = datetime.now()
+            if len(self.emotion_collector) <= 0:
+                return self.emotions[6]
             occurence_count = Counter(self.emotion_collector)
             emotion = occurence_count.most_common(1)[0][0]
             self.state = emotion

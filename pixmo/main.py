@@ -7,6 +7,7 @@ import argparse
 from multiprocessing import Process, Queue
 import face_recognition
 import onnxruntime
+import time
 
 from pixmo.config import Config
 
@@ -29,9 +30,9 @@ yolo_classes = []
 def event_loop(queue: Queue):
     emotion_engine = EmotionEngine()
     behavoir_engine = BehavoirEngine()
+
     while True:
         msg = queue.get()
-
         msg_type = msg["type"]
         msg_payload = msg.get("payload")
 
@@ -58,6 +59,7 @@ def start_pixmo():
         print("Cannot open camera")
         exit()
     while True:
+        time.sleep(0.5)
         ret, frame = cap.read()
         height, width, channels = frame.shape
 
@@ -70,12 +72,13 @@ def start_pixmo():
 
         track_bbs_ids = object_tracker.update(boxes)
 
-        event_queue.put(
-            {
-                "type": "person" if hasPerson else "objects",
-                "payload": {"frame": frame, "objects": track_bbs_ids},
-            }
-        )
+        if track_bbs_ids.shape[0] > 0:
+            event_queue.put(
+                {
+                    "type": "person" if hasPerson else "objects",
+                    "payload": {"frame": frame, "objects": track_bbs_ids},
+                }
+            )
 
         draw_labels(track_bbs_ids, frame, yolo_classes)
         key = cv2.waitKey(1)
