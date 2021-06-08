@@ -8,15 +8,6 @@ import onnxruntime
 
 from pixmo.config import Config
 
-ort_session = onnxruntime.InferenceSession(
-    path.join(Config.BASE_DIR, "models/emotion.onnx")
-)
-
-owner_image = face_recognition.load_image_file(
-    path.join(Config.BASE_DIR, "faces/owner.jpg")
-)
-owner_image_encoding = [face_recognition.face_encodings(owner_image)[0]]
-
 
 def img2tensor(img):
     img = img / 255
@@ -29,7 +20,7 @@ def img2tensor(img):
 
 
 class EmotionEngine:
-    def __init__(self, frame_rate=1, scoring_rate=5):
+    def __init__(self, frame_rate=1, scoring_rate=3):
         self.start_interval = datetime.now()
         self.frame_rate = frame_rate
         self.scoring_rate = scoring_rate
@@ -44,6 +35,14 @@ class EmotionEngine:
         }
         self.emotion_collector = []
         self.state = self.emotions[6]
+        self.ort_session = onnxruntime.InferenceSession(
+            path.join(Config.BASE_DIR, "models/emotion.onnx")
+        )
+
+        owner_image = face_recognition.load_image_file(
+            path.join(Config.BASE_DIR, "faces/owner.jpg")
+        )
+        self.owner_image_encoding = [face_recognition.face_encodings(owner_image)[0]]
 
     def update(self, frame):
         height, width, channels = frame.shape
@@ -54,12 +53,15 @@ class EmotionEngine:
         face_encodings = face_recognition.face_encodings(input_frame, face_locations)
         face_names = []
 
+        if len(face_locations) == 0:
+            return self.state
+
         face_index = 0
 
         for encoding_index, face_encoding in enumerate(face_encodings):
             # See if the face is a match for the known face(s)
             matches = face_recognition.compare_faces(
-                owner_image_encoding, face_encoding
+                self.owner_image_encoding, face_encoding
             )
             name = "Unknown"
 
@@ -79,8 +81,8 @@ class EmotionEngine:
         face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
 
         face_img_tensor = img2tensor(face_img)[None][None]
-        ort_inputs = {ort_session.get_inputs()[0].name: face_img_tensor}
-        ort_outs = ort_session.run(None, ort_inputs)
+        ort_inputs = {self.ort_session.get_inputs()[0].name: face_img_tensor}
+        ort_outs = self.ort_session.run(None, ort_inputs)
         output = ort_outs[0]
         pred = np.argmax(output[0])
 

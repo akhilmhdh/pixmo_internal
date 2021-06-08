@@ -18,6 +18,8 @@ from pixmo.detectors.yolo import (
     load_yolo,
 )
 from pixmo.emotion_engine import EmotionEngine
+from pixmo.behavoir_engine import BehavoirEngine
+from pixmo.sensors import SensorReader
 
 # https://arcade.academy/examples/happy_face.html
 
@@ -26,12 +28,18 @@ yolo_classes = []
 
 def event_loop(queue: Queue):
     emotion_engine = EmotionEngine()
+    behavoir_engine = BehavoirEngine()
     while True:
         msg = queue.get()
+
+        msg_type = msg["type"]
+        msg_payload = msg.get("payload")
+
         if msg["type"] == "end":
             break
-        frame = msg["payload"]
-        emotion = emotion_engine.update(frame)
+
+        action, data = behavoir_engine.update(msg, emotion_engine)
+        print(action, data)
 
 
 def start_pixmo():
@@ -43,18 +51,32 @@ def start_pixmo():
     object_tracker = Sort(max_age=10, min_hits=3, iou_threshold=0.3)
     cap = cv2.VideoCapture(0)
 
+    sensor_reader = SensorReader()
+    model, output_layers = load_yolo()
+
     if not cap.isOpened():
         print("Cannot open camera")
         exit()
     while True:
         ret, frame = cap.read()
-        model, output_layers = load_yolo()
         height, width, channels = frame.shape
+
+        if sensor_reader.read_internal_state() is False:
+            event_queue.put({"type": "internal_state_bad"})
+            continue
+
         blob, outputs = detect_objects(frame, model, output_layers)
         boxes, hasPerson = get_box_dimensions(outputs, height, width)
-        if hasPerson:
-            event_queue.put({"type": "person", "payload": frame})
+
         track_bbs_ids = object_tracker.update(boxes)
+
+        event_queue.put(
+            {
+                "type": "person" if hasPerson else "objects",
+                "payload": {"frame": frame, "objects": track_bbs_ids},
+            }
+        )
+
         draw_labels(track_bbs_ids, frame, yolo_classes)
         key = cv2.waitKey(1)
         if key == 27:
