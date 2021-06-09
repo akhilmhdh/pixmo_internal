@@ -62,7 +62,7 @@ def start_pixmo():
         print("Cannot open camera")
         exit()
     while True:
-        time.sleep(0.5)
+        time.sleep(0.1)
         ret, frame = cap.read()
         height, width, channels = frame.shape
 

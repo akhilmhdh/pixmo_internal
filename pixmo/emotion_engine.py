@@ -7,6 +7,7 @@ import face_recognition
 import onnxruntime
 
 from pixmo.config import Config
+from pixmo.sort import Sort
 
 
 def img2tensor(img):
@@ -43,6 +44,9 @@ class EmotionEngine:
             path.join(Config.BASE_DIR, "faces/owner.jpg")
         )
         self.owner_image_encoding = [face_recognition.face_encodings(owner_image)[0]]
+        self.face_tracker = Sort(max_age=10, min_hits=3, iou_threshold=0.3)
+        self.face_ids = -1
+        self.owner = None
 
     def update(self, frame):
         height, width, channels = frame.shape
@@ -50,26 +54,38 @@ class EmotionEngine:
         input_frame = cv2.cvtColor(input_frame, cv2.COLOR_BGR2RGB)
 
         face_locations = face_recognition.face_locations(input_frame)
-        face_encodings = face_recognition.face_encodings(input_frame, face_locations)
-        face_names = []
 
         if len(face_locations) == 0:
             return self.state
 
-        face_index = 0
+        face_locations_tracking = [[*faces, 1, 0] for faces in face_locations]
+        tracking_faces = self.face_tracker.update(np.array(face_locations_tracking))
 
-        for encoding_index, face_encoding in enumerate(face_encodings):
-            # See if the face is a match for the known face(s)
-            matches = face_recognition.compare_faces(
-                self.owner_image_encoding, face_encoding
+        latest_face = (
+            np.amax(tracking_faces, axis=0)[-1]
+            if tracking_faces.shape[0] > 0
+            else self.face_ids
+        )
+
+        if latest_face > self.face_ids:
+            face_encodings = face_recognition.face_encodings(
+                input_frame, face_locations
             )
-            name = "Unknown"
+            face_names = []
 
-            if True in matches:
-                face_index = encoding_index
-                name = "owner"
+            for encoding_index, face_encoding in enumerate(face_encodings):
+                # See if the face is a match for the known face(s)
+                matches = face_recognition.compare_faces(
+                    self.owner_image_encoding, face_encoding
+                )
+                name = "Unknown"
 
-        top, right, bottom, left = face_locations[face_index]
+                if True in matches:
+                    self.owner = face_locations[encoding_index]
+                    name = "owner"
+                self.face_ids = latest_face
+
+        top, right, bottom, left = self.owner
         # Scale back up face locations since the frame we detected in was scaled to 1/4 size
         top *= 4
         right *= 4
