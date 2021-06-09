@@ -21,6 +21,7 @@ from pixmo.detectors.yolo import (
 from pixmo.emotion_engine import EmotionEngine
 from pixmo.behavoir_engine import BehavoirEngine
 from pixmo.sensors import SensorReader
+from pixmo.display import Display
 
 # https://arcade.academy/examples/happy_face.html
 
@@ -30,6 +31,7 @@ yolo_classes = []
 def event_loop(queue: Queue):
     emotion_engine = EmotionEngine()
     behavoir_engine = BehavoirEngine()
+    display = Display()
 
     while True:
         msg = queue.get()
@@ -40,6 +42,7 @@ def event_loop(queue: Queue):
             break
 
         action, data = behavoir_engine.update(msg, emotion_engine)
+        display.draw(action, data)
         print(action, data)
 
 

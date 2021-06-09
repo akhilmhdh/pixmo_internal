@@ -30,7 +30,7 @@ class BehavoirEngine:
         if msg["type"] == "person":
             emotion = emotion_engine.update(frame)
             if (emotion != "neutral") and (emotion != "happy"):
-                return ("person1", emotion)
+                return ("person", emotion)
 
             if objects.shape[0] > 1:
                 objects = objects[objects[:, 5] != 0]
@@ -40,17 +40,8 @@ class BehavoirEngine:
 
         object_width, object_height = x2 - x1, y2 - y1
         cx, cy = x1 + (object_width // 2), y1 + (object_height // 2)
+        left_axis = ((frame_cx - cx) / width) * 100
+        right_axis = ((frame_cy - cy) / height) * 100
         # print(f"FW {frame_cx}: FH{frame_cy}: CW: {cx}: CH{cy}")
-        pos = ""
-
-        if cx > frame_cx:
-            pos += "left"
-        else:
-            pos += "right"
-
-        if cy > frame_cy:
-            pos += " down"
-        else:
-            pos += " up"
-
+        pos = f"{int(left_axis)}:{int(right_axis)}"
         return ("look", pos)
