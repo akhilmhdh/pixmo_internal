@@ -35,6 +35,9 @@ class BehavoirEngine:
             if objects.shape[0] > 1:
                 objects = objects[objects[:, 5] != 0]
 
+            if objects.shape[0] == 0:
+                return ("person", emotion)
+
         focused_object = self.compute_largest_box(objects)
         (x1, y1, x2, y2, track_id, class_id) = focused_object
 
